@@ -27,6 +27,9 @@ function visualization_enhanced(results, plot_type, figure_number)
         case 'comparison'
             plot_comparison_enhanced(results, figure_number);
             
+        case 'factor_analysis'
+            plot_factor_analysis_enhanced(results, figure_number);
+            
         otherwise
             % 自动识别结果类型
             if isfield(results, 'baseline') && isfield(results, 'optimized')
@@ -570,4 +573,105 @@ function enhance_subplot(xlabel_text, ylabel_text, title_text)
     set(gca, 'Box', 'on', 'LineWidth', 1.2);
     set(gca, 'FontSize', 10);
     set(gca, 'Color', [0.98, 0.98, 0.98]);
+end
+
+
+function plot_factor_analysis_enhanced(results, figure_number)
+% PLOT_FACTOR_ANALYSIS_ENHANCED 绘制单因素分析结果
+%
+% 对 run_factor_analysis 返回的 results.factor_results 中的每种因素
+% 绘制"因素值 → 能量回收效率"关系曲线。
+
+    if ~isfield(results, 'factor_results')
+        warning('visualization_enhanced:noFactorResults', ...
+                '结果结构体中未找到 factor_results 字段');
+        return;
+    end
+    
+    factor_names = fieldnames(results.factor_results);
+    n_factors = length(factor_names);
+    if n_factors == 0
+        warning('visualization_enhanced:emptyFactorResults', '无可用的单因素分析结果');
+        return;
+    end
+    
+    % 创建图表窗口
+    driving_cycle_str = '';
+    if isfield(results, 'driving_cycle')
+        driving_cycle_str = results.driving_cycle;
+    end
+    
+    if isempty(figure_number)
+        fig = figure('Name', sprintf('单因素分析结果 - %s工况', driving_cycle_str), ...
+                     'Position', [100, 100, 1400, 900], 'Color', 'white');
+    else
+        pos_x = 50 + mod(figure_number - 1, 6) * 120;
+        pos_y = 50 + floor((figure_number - 1) / 6) * 80;
+        fig = figure(figure_number);
+        set(fig, 'Name', sprintf('图表%d: 单因素分析 - %s工况', figure_number, driving_cycle_str), ...
+                 'Position', [pos_x, pos_y, 1400, 900], 'Color', 'white');
+    end
+    
+    colors = get_color_scheme_enhanced();
+    
+    % 子图布局
+    n_cols = 3;
+    n_rows = ceil(n_factors / n_cols);
+    
+    % 总标题
+    if ~isempty(driving_cycle_str)
+        sgtitle_str = sprintf('单因素变量分析 - %s工况（优化策略）', driving_cycle_str);
+    else
+        sgtitle_str = '单因素变量分析（优化策略）';
+    end
+    % sgtitle 在旧版 MATLAB 中可能不存在，使用兼容写法
+    try
+        sgtitle(sgtitle_str, 'FontSize', 14, 'FontWeight', 'bold');
+    catch
+        annotation('textbox', [0.3, 0.95, 0.4, 0.04], 'String', sgtitle_str, ...
+                   'HorizontalAlignment', 'center', 'FontSize', 13, ...
+                   'FontWeight', 'bold', 'EdgeColor', 'none');
+    end
+    
+    for i = 1:n_factors
+        factor = factor_names{i};
+        fa = results.factor_results.(factor);
+        
+        subplot(n_rows, n_cols, i);
+        
+        % 主曲线
+        plot(fa.factor_values, fa.efficiency_values, '-o', ...
+             'Color', colors.primary, 'LineWidth', 2, 'MarkerSize', 7, ...
+             'MarkerFaceColor', colors.primary, 'DisplayName', '效率曲线');
+        hold on;
+        
+        % 标记基准值
+        [~, base_idx] = min(abs(fa.factor_values - fa.baseline_value));
+        plot(fa.factor_values(base_idx), fa.efficiency_values(base_idx), ...
+             's', 'MarkerSize', 10, 'MarkerFaceColor', colors.accent, ...
+             'MarkerEdgeColor', 'white', 'LineWidth', 2, 'DisplayName', '基准值');
+        
+        % 添加基准效率水平参考线
+        yline(fa.baseline_efficiency, '--', 'Color', colors.medium_gray, ...
+              'LineWidth', 1.2, 'DisplayName', sprintf('基准效率 %.1f%%', fa.baseline_efficiency));
+        
+        % 坐标轴装饰
+        xlabel(sprintf('%s (%s)', fa.factor_name, fa.factor_unit), ...
+               'FontSize', 10, 'FontWeight', 'normal');
+        ylabel('能量回收效率 (%)', 'FontSize', 10);
+        title(sprintf('%s的影响', fa.factor_name), 'FontSize', 11, 'FontWeight', 'bold');
+        legend('Location', 'best', 'FontSize', 8);
+        grid on;
+        set(gca, 'GridAlpha', 0.3, 'Box', 'on', 'FontSize', 9, ...
+                 'Color', [0.98, 0.98, 0.98]);
+        
+        % 效率变化范围标注
+        eff_range = max(fa.efficiency_values) - min(fa.efficiency_values);
+        text(0.97, 0.05, sprintf('变化范围: %.2f%%', eff_range), ...
+             'Units', 'normalized', 'HorizontalAlignment', 'right', ...
+             'FontSize', 8, 'Color', colors.text, ...
+             'BackgroundColor', 'white', 'EdgeColor', colors.medium_gray);
+    end
+    
+    drawnow;
 end
