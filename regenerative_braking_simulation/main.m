@@ -46,6 +46,7 @@ function results = main(simulation_mode, driving_cycle, varargin)
     addParameter(p, 'temperature', params.environment.temperature_default);
     addParameter(p, 'slope', params.environment.slope_default);
     addParameter(p, 'initial_SOC', params.battery.SOC_default * 100);
+    addParameter(p, 'plot', config.plot_results);  % 允许调用方控制是否绘图
     parse(p, varargin{:});
     
     % 更新参数
@@ -53,6 +54,7 @@ function results = main(simulation_mode, driving_cycle, varargin)
     temperature = p.Results.temperature;
     slope = p.Results.slope;
     initial_SOC = p.Results.initial_SOC;
+    config.plot_results = p.Results.plot;  % 允许外部覆盖绘图选项
     
     % 显示仿真信息
     if config.verbose
@@ -254,11 +256,26 @@ end
 
 function results = run_factor_analysis(driving_cycle, params, config)
 % RUN_FACTOR_ANALYSIS 运行单因素影响分析
+%
+%   对7种因素（mass, motor_rpm, temperature, SOC, pedal_travel, slope,
+%   env_temperature）分别进行单因素分析，使用优化策略，并汇总结果。
     
     fprintf('执行单因素影响分析...\n');
-    % 此功能将在factor_analysis.m中实现
+    
+    factors = {'mass', 'motor_rpm', 'temperature', 'SOC', ...
+               'pedal_travel', 'slope', 'env_temperature'};
+    
     results = struct();
-    results.message = '单因素分析功能将在factor_analysis模块中实现';
+    results.driving_cycle = driving_cycle;
+    results.factors = factors;
+    
+    for k = 1:length(factors)
+        factor_name = factors{k};
+        factor_result = factor_analysis(factor_name, driving_cycle, 'optimized', params, config);
+        results.(factor_name) = factor_result;
+    end
+    
+    fprintf('\n单因素分析完成，共分析 %d 个因素。\n', length(factors));
     
 end
 
@@ -300,6 +317,17 @@ function display_summary(results, simulation_mode)
         fprintf('  回收能量: %.4f kWh\n', results.optimized.energy_recovered);
         fprintf('  总制动能量: %.4f kWh\n', results.optimized.energy_total);
         fprintf('\n效率提升: %.2f 个百分点\n', results.efficiency_improvement);
+    elseif strcmp(simulation_mode, 'factor_analysis')
+        fprintf('单因素分析工况: %s\n', results.driving_cycle);
+        fprintf('分析因素数量: %d\n', length(results.factors));
+        for k = 1:length(results.factors)
+            fname = results.factors{k};
+            if isfield(results, fname)
+                r = results.(fname);
+                fprintf('  %s: 效率范围 %.2f%% ~ %.2f%%\n', ...
+                    r.factor_name, min(r.efficiency_values), max(r.efficiency_values));
+            end
+        end
     else
         fprintf('能量回收效率: %.2f%%\n', results.efficiency_average);
         fprintf('回收能量: %.4f kWh\n', results.energy_recovered);
