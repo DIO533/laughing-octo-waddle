@@ -46,6 +46,7 @@ function results = main(simulation_mode, driving_cycle, varargin)
     addParameter(p, 'temperature', params.environment.temperature_default);
     addParameter(p, 'slope', params.environment.slope_default);
     addParameter(p, 'initial_SOC', params.battery.SOC_default * 100);
+    addParameter(p, 'plot', config.plot_results);
     parse(p, varargin{:});
     
     % 更新参数
@@ -53,6 +54,7 @@ function results = main(simulation_mode, driving_cycle, varargin)
     temperature = p.Results.temperature;
     slope = p.Results.slope;
     initial_SOC = p.Results.initial_SOC;
+    config.plot_results = p.Results.plot;
     
     % 显示仿真信息
     if config.verbose
@@ -96,7 +98,11 @@ function results = main(simulation_mode, driving_cycle, varargin)
     
     % 绘制结果
     if config.plot_results
-        visualization(results, simulation_mode);
+        if strcmpi(simulation_mode, 'factor_analysis')
+            visualization_enhanced(results, 'factor_analysis');
+        else
+            visualization(results, simulation_mode);
+        end
     end
     
     % 显示总结
@@ -256,9 +262,32 @@ function results = run_factor_analysis(driving_cycle, params, config)
 % RUN_FACTOR_ANALYSIS 运行单因素影响分析
     
     fprintf('执行单因素影响分析...\n');
-    % 此功能将在factor_analysis.m中实现
+    
+    % 定义需要分析的7种因素
+    factors = {'mass', 'motor_rpm', 'temperature', 'SOC', 'pedal_travel', 'slope', 'env_temperature'};
+    
+    % 配置静默模式（避免每次子仿真重复打印和绘图）
+    config_silent = config;
+    config_silent.plot_results = false;
+    config_silent.verbose = false;
+    
     results = struct();
-    results.message = '单因素分析功能将在factor_analysis模块中实现';
+    results.driving_cycle = driving_cycle;
+    results.factor_results = struct();
+    
+    for i = 1:length(factors)
+        factor = factors{i};
+        fprintf('  分析因素 (%d/%d): %s\n', i, length(factors), factor);
+        try
+            fa_result = factor_analysis(factor, driving_cycle, 'optimized', params, config_silent);
+            results.factor_results.(factor) = fa_result;
+        catch ME
+            fprintf('  警告: 分析 %s 时出错: %s\n', factor, ME.message);
+        end
+    end
+    
+    n_done = length(fieldnames(results.factor_results));
+    fprintf('单因素分析完成，共分析 %d 种因素\n', n_done);
     
 end
 
@@ -300,6 +329,10 @@ function display_summary(results, simulation_mode)
         fprintf('  回收能量: %.4f kWh\n', results.optimized.energy_recovered);
         fprintf('  总制动能量: %.4f kWh\n', results.optimized.energy_total);
         fprintf('\n效率提升: %.2f 个百分点\n', results.efficiency_improvement);
+    elseif strcmp(simulation_mode, 'factor_analysis')
+        n_done = length(fieldnames(results.factor_results));
+        fprintf('驾驶循环: %s\n', results.driving_cycle);
+        fprintf('已完成单因素分析数量: %d 种\n', n_done);
     else
         fprintf('能量回收效率: %.2f%%\n', results.efficiency_average);
         fprintf('回收能量: %.4f kWh\n', results.energy_recovered);
