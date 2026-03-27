@@ -5,7 +5,7 @@ function visualization_enhanced(results, plot_type, figure_number)
 %
 % 输入参数:
 %   results       - 仿真结果结构体
-%   plot_type     - 图表类型: 'single' | 'comparison'
+%   plot_type     - 图表类型: 'single' | 'comparison' | 'factor_analysis'
 %   figure_number - 图表编号 (可选，用于生成多个独立窗口)
 
     % 设置专业图表样式
@@ -27,10 +27,15 @@ function visualization_enhanced(results, plot_type, figure_number)
         case 'comparison'
             plot_comparison_enhanced(results, figure_number);
             
+        case 'factor_analysis'
+            plot_factor_analysis_enhanced(results, figure_number);
+            
         otherwise
             % 自动识别结果类型
             if isfield(results, 'baseline') && isfield(results, 'optimized')
                 plot_comparison_enhanced(results, figure_number);
+            elseif isfield(results, 'factor_values')
+                plot_factor_analysis_enhanced(results, figure_number);
             else
                 plot_single_strategy_enhanced(results, figure_number);
             end
@@ -570,4 +575,139 @@ function enhance_subplot(xlabel_text, ylabel_text, title_text)
     set(gca, 'Box', 'on', 'LineWidth', 1.2);
     set(gca, 'FontSize', 10);
     set(gca, 'Color', [0.98, 0.98, 0.98]);
+end
+
+
+function plot_factor_analysis_enhanced(results, figure_number)
+% PLOT_FACTOR_ANALYSIS_ENHANCED 绘制单因素分析结果图表
+%
+%   results 可以是单个因素的分析结果（含 factor_values、efficiency_values
+%   等字段），也可以是包含多个因素结果的汇总结构体（含 factors 字段）。
+
+    colors = get_color_scheme_enhanced();
+    
+    % 判断是单因素结果还是多因素汇总结果
+    if isfield(results, 'factors')
+        % 多因素汇总：生成一张综合图表
+        plot_all_factors_summary(results, figure_number, colors);
+    else
+        % 单因素结果：生成该因素的详细图表
+        plot_single_factor(results, figure_number, colors);
+    end
+end
+
+
+function plot_single_factor(results, figure_number, colors)
+% PLOT_SINGLE_FACTOR 绘制单个因素的详细分析图表
+
+    % 创建图表窗口
+    if isempty(figure_number)
+        fig = figure('Name', sprintf('单因素分析 - %s', results.factor_name), ...
+                     'Position', [100, 100, 1000, 600], 'Color', 'white');
+    else
+        pos_x = 50 + (figure_number - 1) * 80;
+        pos_y = 50 + (figure_number - 1) * 40;
+        fig = figure(figure_number);
+        set(fig, 'Name', sprintf('图表%d: 单因素分析 - %s', figure_number, results.factor_name), ...
+                 'Position', [pos_x, pos_y, 1000, 600], 'Color', 'white');
+    end
+    
+    sgtitle(sprintf('单因素分析：%s 对能量回收效率的影响 (%s工况)', ...
+                    results.factor_name, results.driving_cycle), ...
+            'FontSize', 14, 'FontWeight', 'bold', 'Color', colors.text);
+    
+    % 子图1：效率-因素值曲线
+    subplot(1, 2, 1);
+    plot(results.factor_values, results.efficiency_values, 'o-', ...
+         'Color', colors.primary, 'LineWidth', 2.5, 'MarkerSize', 8, ...
+         'MarkerFaceColor', colors.primary);
+    hold on;
+    % 标注基准值
+    [~, bi] = min(abs(results.factor_values - results.baseline_value));
+    plot(results.factor_values(bi), results.efficiency_values(bi), 's', ...
+         'MarkerSize', 12, 'MarkerFaceColor', colors.accent, ...
+         'MarkerEdgeColor', 'white', 'LineWidth', 2, ...
+         'DisplayName', sprintf('基准值 (%.2f %s)', results.baseline_value, results.factor_unit));
+    enhance_subplot(sprintf('%s (%s)', results.factor_name, results.factor_unit), ...
+                    '能量回收效率 (%)', ...
+                    sprintf('%s 与效率关系', results.factor_name));
+    legend('效率曲线', '基准值', 'Location', 'best');
+    
+    % 子图2：回收能量-因素值曲线
+    subplot(1, 2, 2);
+    plot(results.factor_values, results.energy_recovered_values * 1000, 'o-', ...
+         'Color', colors.secondary, 'LineWidth', 2.5, 'MarkerSize', 8, ...
+         'MarkerFaceColor', colors.secondary);
+    hold on;
+    plot(results.factor_values(bi), results.energy_recovered_values(bi) * 1000, 's', ...
+         'MarkerSize', 12, 'MarkerFaceColor', colors.accent, ...
+         'MarkerEdgeColor', 'white', 'LineWidth', 2);
+    enhance_subplot(sprintf('%s (%s)', results.factor_name, results.factor_unit), ...
+                    '回收能量 (Wh)', ...
+                    sprintf('%s 与回收能量关系', results.factor_name));
+    
+    drawnow;
+end
+
+
+function plot_all_factors_summary(all_results, figure_number, colors)
+% PLOT_ALL_FACTORS_SUMMARY 汇总展示所有因素的分析结果
+
+    factors = all_results.factors;
+    n_factors = length(factors);
+    
+    % 计算子图布局（每因素一个子图）
+    n_cols = min(4, n_factors);
+    n_rows = ceil(n_factors / n_cols);
+    
+    % 创建图表窗口
+    if isempty(figure_number)
+        fig = figure('Name', '单因素分析综合结果', ...
+                     'Position', [50, 50, n_cols*320, n_rows*280], 'Color', 'white');
+    else
+        pos_x = 50 + (figure_number - 1) * 80;
+        pos_y = 50 + (figure_number - 1) * 40;
+        fig = figure(figure_number);
+        set(fig, 'Name', sprintf('图表%d: 单因素分析综合结果', figure_number), ...
+                 'Position', [pos_x, pos_y, n_cols*320, n_rows*280], 'Color', 'white');
+    end
+    
+    sgtitle(sprintf('单因素变量法分析综合结果 (%s工况)', all_results.driving_cycle), ...
+            'FontSize', 15, 'FontWeight', 'bold', 'Color', colors.text);
+    
+    % 为每个因素绘制子图
+    for k = 1:n_factors
+        fname = factors{k};
+        if ~isfield(all_results, fname)
+            continue;
+        end
+        r = all_results.(fname);
+        
+        subplot(n_rows, n_cols, k);
+        
+        plot(r.factor_values, r.efficiency_values, 'o-', ...
+             'Color', colors.primary, 'LineWidth', 2, 'MarkerSize', 6, ...
+             'MarkerFaceColor', colors.primary);
+        hold on;
+        
+        % 标注基准值
+        [~, bi] = min(abs(r.factor_values - r.baseline_value));
+        plot(r.factor_values(bi), r.efficiency_values(bi), 's', ...
+             'MarkerSize', 9, 'MarkerFaceColor', colors.accent, ...
+             'MarkerEdgeColor', 'white', 'LineWidth', 2);
+        
+        % 标注最大最小效率点
+        [max_eff, max_idx] = max(r.efficiency_values);
+        [min_eff, min_idx] = min(r.efficiency_values);
+        
+        text(r.factor_values(max_idx), max_eff, sprintf(' %.1f%%', max_eff), ...
+             'FontSize', 8, 'Color', colors.success, 'FontWeight', 'bold');
+        text(r.factor_values(min_idx), min_eff, sprintf(' %.1f%%', min_eff), ...
+             'FontSize', 8, 'Color', colors.error, 'FontWeight', 'bold');
+        
+        enhance_subplot(sprintf('%s (%s)', r.factor_name, r.factor_unit), ...
+                        '效率 (%)', r.factor_name);
+    end
+    
+    drawnow;
 end
